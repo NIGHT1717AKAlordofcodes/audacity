@@ -18,6 +18,7 @@
 #include "ImportExportCommands.h"
 
 #include <algorithm>
+#include <utility>
 #include "CommandDispatch.h"
 #include "MenuRegistry.h"
 #include "../CommonCommandFlags.h"

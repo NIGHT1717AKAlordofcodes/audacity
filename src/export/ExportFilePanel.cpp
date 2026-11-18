@@ -1,5 +1,6 @@
 #include "ExportFilePanel.h"
 
+#include <algorithm>
 #include <numeric>
 #include <wx/stattext.h>
 #include <wx/button.h>
@@ -492,7 +493,7 @@ void ExportFilePanel::OnChannelsConfigure(wxCommandEvent &event)
               MaxExportChannels)
          : MaxExportChannels;
       mMixerSpec = std::make_unique<MixerOptions::Downmix>(
-         numTrackChannels, maxChannels);
+         static_cast<unsigned>(numTrackChannels), maxChannels);
    }
 
    auto mixerSpec = std::make_unique<MixerOptions::Downmix>(*mMixerSpec);

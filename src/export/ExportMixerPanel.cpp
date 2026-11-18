@@ -13,13 +13,16 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 #include <wx/bitmap.h>
 #include <wx/brush.h>
 #include <wx/dcclient.h>
 #include <wx/dcmemory.h>
+#include <wx/event.h>
 #include <wx/font.h>
 #include <wx/pen.h>
+#include <wx/string.h>
 
 #include "Internat.h"
 #include "MixerOptions.h"

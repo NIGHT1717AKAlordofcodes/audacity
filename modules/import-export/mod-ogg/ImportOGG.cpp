@@ -307,21 +307,27 @@ void OggImportFileHandle::Import(
 
          samplesRead = bytesRead / streamChannels / sizeof(short);
 
-         if (samplesRead > 0 && mStreamUsage[bitstream] != 0)
+         if (samplesRead > 0 &&
+             static_cast<size_t>(bitstream) < mStreamUsage.size() &&
+             static_cast<size_t>(bitstream) < mStreams.size() &&
+             mStreamUsage[bitstream] != 0)
          {
             /* give the data to the wavetracks */
-            unsigned chn = 0;
-            ImportUtils::ForEachChannel(**std::next(mStreams.begin(), bitstream), [&](auto& channel)
+            if (auto& streamPtr = *std::next(mStreams.begin(), bitstream))
             {
-               channel.AppendBuffer(
-                  (char *)(mainBuffer.get() + chn),
-                  int16Sample,
-                  samplesRead,
-                  streamChannels,
-                  int16Sample
-               );
-               ++chn;
-            });
+               unsigned chn = 0;
+               ImportUtils::ForEachChannel(*streamPtr, [&](auto& channel)
+               {
+                  channel.AppendBuffer(
+                     (char *)(mainBuffer.get() + chn),
+                     int16Sample,
+                     samplesRead,
+                     streamChannels,
+                     int16Sample
+                  );
+                  ++chn;
+               });
+            }
          }
 
          samplesSinceLastCallback += samplesRead;

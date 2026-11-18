@@ -14,10 +14,12 @@
 
 #include <algorithm>
 
+#include <wx/button.h>
 #include <wx/sizer.h>
 #include <wx/slider.h>
 #include <wx/spinctrl.h>
 #include <wx/stattext.h>
+#include <wx/textctrl.h>
 
 #include "WaveTrack.h"
 #include "MixerOptions.h"
