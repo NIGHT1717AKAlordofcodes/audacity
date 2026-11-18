@@ -26,6 +26,7 @@ a graph for EffectScienFilter.
 
 #include <wx/setup.h> // for wxUSE_* macros
 
+#include <algorithm>
 #include <wx/brush.h>
 #include <wx/choice.h>
 #include <wx/dcclient.h>
@@ -257,6 +258,7 @@ std::unique_ptr<EffectEditor> EffectScienFilter::PopulateOrExchange(
 //
 bool EffectScienFilter::TransferDataToWindow(const EffectSettings &)
 {
+   mOrder = std::clamp(mOrder, Order.min, Order.max);
    mOrderIndex = mOrder - 1;
 
    if (!mUIParent->TransferDataToWindow())

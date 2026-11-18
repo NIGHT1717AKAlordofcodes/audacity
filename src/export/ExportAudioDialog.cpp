@@ -412,7 +412,9 @@ void ExportAudioDialog::PopulateOrExchange(ShuttleGui& S)
 void ExportAudioDialog::OnExportRangeChange(wxCommandEvent& event)
 {
    const auto enableSplits = event.GetId() == ExportRangeSplitID;
-   mExportOptionsPanel->SetCustomMappingEnabled(!enableSplits);
+   mExportOptionsPanel->SetCustomMappingEnabled(
+      !enableSplits &&
+      RealtimeEffectList::Get(mProject).GetStatesCount() == 0);
    if(mSplitsPanel->IsShown() != enableSplits)
    {
       mExportSettingsDirty = true;
@@ -596,21 +598,19 @@ void ExportAudioDialog::OnExport(wxCommandEvent &event)
          //all tracks regardless of their mute/solo state, but
          //muted channels should not be present in exported file -
          //apply channel mask to exclude them
-         auto tracks = TrackList::Get(mProject).Any<WaveTrack>();
+         auto tracks = TrackList::Get(mProject).Any<const WaveTrack>();
+         const bool anySolo =
+            !(tracks + &WaveTrack::GetSolo).empty();
          std::vector<bool> channelMask(
             tracks.sum([](const auto track) { return track->NChannels(); }),
             false);
          unsigned trackIndex = 0;
          for(const auto track : tracks)
          {
-            if(track->GetSolo())
-            {
-               channelMask.assign(channelMask.size(), false);
-               for(unsigned i = 0; i < track->NChannels(); ++i)
-                  channelMask[trackIndex++] = true;
-               break;
-            }
-            if(!track->GetMute() && (!selectedOnly || track->GetSelected()))
+            const bool exportTrack =
+               (!selectedOnly || track->GetSelected()) &&
+               (anySolo ? track->GetSolo() : !track->GetMute());
+            if(exportTrack)
             {
                for(unsigned i = 0; i < track->NChannels(); ++i)
                   channelMask[trackIndex++] = true;
@@ -619,8 +619,16 @@ void ExportAudioDialog::OnExport(wxCommandEvent &event)
                trackIndex += track->NChannels();
          }
 
-         tempMixerSpec = std::make_unique<MixerOptions::Downmix>(*mExportOptionsPanel->GetMixerSpec(), channelMask);
-         builder.SetMixerSpec(tempMixerSpec.get());
+         if (const auto* mixerSpec = mExportOptionsPanel->GetMixerSpec())
+         {
+            tempMixerSpec = std::make_unique<MixerOptions::Downmix>(
+               *mixerSpec, channelMask);
+            builder.SetMixerSpec(tempMixerSpec.get());
+         }
+         else
+         {
+            builder.SetNumChannels(2);
+         }
       }
       else
          builder.SetNumChannels(channels);

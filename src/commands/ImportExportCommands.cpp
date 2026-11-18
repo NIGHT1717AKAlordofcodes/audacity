@@ -17,6 +17,7 @@
 
 #include "ImportExportCommands.h"
 
+#include <algorithm>
 #include "CommandDispatch.h"
 #include "MenuRegistry.h"
 #include "../CommonCommandFlags.h"
@@ -128,14 +129,23 @@ bool ExportCommand::Apply(const CommandContext & context)
 
    if(plugin != nullptr)
    {
-      auto editor = plugin->CreateOptionsEditor(formatIndex, nullptr);
-      editor->Load(*gPrefs);
+      ExportProcessor::Parameters parameters;
+      if (auto editor = plugin->CreateOptionsEditor(formatIndex, nullptr))
+      {
+         editor->Load(*gPrefs);
+         parameters = ExportUtils::ParametersFromEditor(*editor);
+      }
+
+      const auto formatInfo = plugin->GetFormatInfo(formatIndex);
+      const auto maxChannels = std::max(1u, formatInfo.maxChannels);
+      const auto numChannels = std::clamp<unsigned>(
+         static_cast<unsigned>(std::max(1, mnChannels)), 1u, maxChannels);
 
       auto builder = ExportTaskBuilder{}
-         .SetParameters(ExportUtils::ParametersFromEditor(*editor))
-         .SetNumChannels(std::max(0, mnChannels))
+         .SetParameters(std::move(parameters))
+         .SetNumChannels(numChannels)
          .SetSampleRate(ProjectRate::Get(context.project).GetRate())
-         .SetPlugin(plugin)
+         .SetPlugin(plugin, formatIndex)
          .SetFileName(mFileName)
          .SetRange(t0, t1, true);
 

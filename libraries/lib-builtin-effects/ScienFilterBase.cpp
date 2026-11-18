@@ -25,6 +25,7 @@
 #include "Prefs.h"
 #include "Project.h"
 #include "WaveTrack.h"
+#include <algorithm>
 #include <cmath>
 
 #if !defined(M_PI)
@@ -79,18 +80,20 @@ const ComponentInterfaceSymbol ScienFilterBase::Symbol { XO(
 
 ScienFilterBase::ScienFilterBase()
 {
-   Parameters().Reset(*this);
-   SetLinearEffectFlag(true);
-
-   mOrderIndex = mOrder - 1;
-
    mdBMin = -30.0;
    mdBMax = 30.0;
+   mEditingBatchParams = false;
 
    mLoFreq = 20; // Lowest frequency to display in response graph
    mNyquist =
       44100.0 /
       2.0; // only used during initialization, updated when effect is used
+
+   Parameters().Reset(*this);
+   SetLinearEffectFlag(true);
+
+   mOrderIndex = mOrder - 1;
+   CalcFilter();
 }
 
 ScienFilterBase::~ScienFilterBase()
@@ -133,8 +136,15 @@ unsigned ScienFilterBase::GetAudioOutCount() const
 }
 
 bool ScienFilterBase::ProcessInitialize(
-   EffectSettings&, double, ChannelNames chanMap)
+   EffectSettings&, double sampleRate, ChannelNames chanMap)
 {
+   if (sampleRate > 0.0)
+      mNyquist = sampleRate / 2.0;
+
+   CalcFilter();
+   if (!mpBiquad)
+      return false;
+
    for (int iPair = 0; iPair < (mOrder + 1) / 2; iPair++)
       mpBiquad[iPair].Reset();
    return true;
@@ -144,6 +154,9 @@ size_t ScienFilterBase::ProcessBlock(
    EffectSettings&, const float* const* inBlock, float* const* outBlock,
    size_t blockLen)
 {
+   if (!mpBiquad)
+      return 0;
+
    const float* ibuf = inBlock[0];
    for (int iPair = 0; iPair < (mOrder + 1) / 2; iPair++)
    {
@@ -161,47 +174,68 @@ bool ScienFilterBase::Init()
    int selcount = 0;
    double rate = 0.0;
 
-   auto trackRange = inputTracks()->Selected<const WaveTrack>();
-
+   if (const auto pTracks = inputTracks())
    {
-      auto t = *trackRange.begin();
-      mNyquist = (t ? t->GetRate() : mProjectRate) / 2.0;
-   }
+      auto trackRange = pTracks->Selected<const WaveTrack>();
 
-   for (auto t : trackRange)
-   {
-      if (selcount == 0)
-         rate = t->GetRate();
-      else
       {
-         if (t->GetRate() != rate)
-         {
-            BasicUI::ShowMessageBox(XO(
-               "To apply a filter, all selected tracks must have the same sample rate."));
-            return false;
-         }
+         auto t = *trackRange.begin();
+         mNyquist = (t ? t->GetRate() : mProjectRate) / 2.0;
       }
-      ++selcount;
+
+      for (auto t : trackRange)
+      {
+         if (selcount == 0)
+            rate = t->GetRate();
+         else
+         {
+            if (t->GetRate() != rate)
+            {
+               BasicUI::ShowMessageBox(XO(
+                  "To apply a filter, all selected tracks must have the same sample rate."));
+               return false;
+            }
+         }
+         ++selcount;
+      }
+   }
+   else if (mProjectRate > 0.0)
+   {
+      mNyquist = mProjectRate / 2.0;
    }
 
+   if (mNyquist <= mLoFreq)
+      mNyquist = 44100.0 / 2.0;
+
+   CalcFilter();
    return true;
 }
 
 void ScienFilterBase::CalcFilter()
 {
+   mOrder = std::clamp(mOrder, Order.min, Order.max);
+   mOrderIndex = mOrder - 1;
+
+   const double nyquist = mNyquist > 1.0 ? mNyquist : (44100.0 / 2.0);
+   const double maxCutoff = std::max<double>(Cutoff.min, nyquist * 0.9999);
+   const double cutoff = std::clamp<double>(mCutoff, Cutoff.min, maxCutoff);
+   const int subtype =
+      std::clamp(mFilterSubtype, Subtype.min, Subtype.max);
+
    switch (mFilterType)
    {
    case kButterworth:
+   default:
       mpBiquad = Biquad::CalcButterworthFilter(
-         mOrder, mNyquist, mCutoff, mFilterSubtype);
+         mOrder, nyquist, cutoff, subtype);
       break;
    case kChebyshevTypeI:
       mpBiquad = Biquad::CalcChebyshevType1Filter(
-         mOrder, mNyquist, mCutoff, mRipple, mFilterSubtype);
+         mOrder, nyquist, cutoff, mRipple, subtype);
       break;
    case kChebyshevTypeII:
       mpBiquad = Biquad::CalcChebyshevType2Filter(
-         mOrder, mNyquist, mCutoff, mStopbandRipple, mFilterSubtype);
+         mOrder, nyquist, cutoff, mStopbandRipple, subtype);
       break;
    }
 }

@@ -213,6 +213,12 @@ jobs:
         pushd .build.${{ matrix.config.arch }}
         ctest -C ${{ env.BUILD_TYPE }} --verbose
         popd
+    - name: Build Windows Installer
+      if: env.BUILD_LEVEL == 'alpha'
+      continue-on-error: true
+      shell: pwsh
+      run: |
+        cmake --build .build.${{ matrix.config.arch }} --target innosetup --config ${{ env.BUILD_TYPE }}
     - name: Package
       uses: audacity/audacity-actions/package@v7
       with:

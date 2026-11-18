@@ -26,7 +26,7 @@ wxDECLARE_EXPORTED_EVENT(AUDACITY_DLL_API,
 
 class ExportFilePanel final : public wxPanelWrapper
 {
-   constexpr static auto MaxExportChannels = 32u;
+   constexpr static auto MaxExportChannels = 255u;
 public:
 
    ExportFilePanel(AudacityProject& project,

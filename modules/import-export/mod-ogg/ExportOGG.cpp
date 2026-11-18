@@ -13,6 +13,7 @@
 
 #include "Export.h"
 
+#include <algorithm>
 #include <wx/log.h>
 #include <wx/stream.h>
 
@@ -98,30 +99,34 @@ namespace
 }
 
 #define SAMPLES_PER_RUN 8192u
+constexpr unsigned MaxOggVorbisChannels = 255u;
 
 class OGGExportProcessor final : public ExportProcessor
 {
    struct
    {
       TranslatableString status;
-      double t0;
-      double t1;
-      unsigned numChannels;
+      double t0{};
+      double t1{};
+      unsigned numChannels{};
       std::unique_ptr<Mixer> mixer;
       std::unique_ptr<FileIO> outFile;
       wxFileNameWrapper fName;
 
       // All the Ogg and Vorbis encoding data
-      ogg_stream_state stream;
-      ogg_page         page;
-      ogg_packet       packet;
+      ogg_stream_state stream{};
+      ogg_page         page{};
+      ogg_packet       packet{};
 
-      vorbis_info      info;
-      vorbis_comment   comment;
-      vorbis_dsp_state dsp;
-      vorbis_block     block;
+      vorbis_info      info{};
+      vorbis_comment   comment{};
+      vorbis_dsp_state dsp{};
+      vorbis_block     block{};
       bool stream_ok{false};
-      bool analysis_state_ok{false};
+      bool info_ok{false};
+      bool dsp_ok{false};
+      bool block_ok{false};
+      bool comment_ok{false};
    } context;
 public:
    ~OGGExportProcessor() override;
@@ -165,7 +170,7 @@ int ExportOGG::GetFormatCount() const
 FormatInfo ExportOGG::GetFormatInfo(int) const
 {
    return {
-      wxT("OGG"), XO("Ogg Vorbis Files"), { wxT("ogg") }, 255, true
+      wxT("OGG"), XO("Ogg Vorbis Files"), { wxT("ogg") }, MaxOggVorbisChannels, true
    };
 }
 
@@ -174,14 +179,17 @@ OGGExportProcessor::~OGGExportProcessor()
    if(context.stream_ok)
       ogg_stream_clear(&context.stream);
 
-   if(context.analysis_state_ok)
-   {
+   if(context.comment_ok)
       vorbis_comment_clear(&context.comment);
-      vorbis_block_clear(&context.block);
-      vorbis_dsp_clear(&context.dsp);
-   }
 
-   vorbis_info_clear(&context.info);
+   if(context.block_ok)
+      vorbis_block_clear(&context.block);
+
+   if(context.dsp_ok)
+      vorbis_dsp_clear(&context.dsp);
+
+   if(context.info_ok)
+      vorbis_info_clear(&context.info);
 }
 
 
@@ -193,9 +201,17 @@ bool OGGExportProcessor::Initialize(AudacityProject& project,
    MixerOptions::Downmix* mixerSpec,
    const Tags* metadata)
 {
+   if (numChannels < 1 || numChannels > MaxOggVorbisChannels) {
+      throw ExportException(
+         XO("Ogg Vorbis supports between 1 and %d channels.")
+            .Format(static_cast<int>(MaxOggVorbisChannels))
+            .Translation());
+   }
+
    context.t0 = t0;
    context.t1 = t1;
    context.numChannels = numChannels;
+   context.fName = fName;
 
    double    quality = ExportPluginHelpers::GetParameterValue(parameters, 0, 5) / 10.0;
 
@@ -207,6 +223,7 @@ bool OGGExportProcessor::Initialize(AudacityProject& project,
    // Encoding setup
 
    vorbis_info_init(&context.info);
+   context.info_ok = true;
 
    if (vorbis_encode_init_vbr(&context.info, numChannels, (int)(sampleRate + 0.5), quality)) {
       // TODO: more precise message
@@ -219,15 +236,18 @@ bool OGGExportProcessor::Initialize(AudacityProject& project,
       throw ExportException(_("Unable to open target file for writing"));
    }
 
-   context.analysis_state_ok = vorbis_analysis_init(&context.dsp, &context.info) == 0 &&
-       vorbis_block_init(&context.dsp, &context.block) == 0;
+   context.dsp_ok = vorbis_analysis_init(&context.dsp, &context.info) == 0;
+   if (context.dsp_ok)
+      context.block_ok = vorbis_block_init(&context.dsp, &context.block) == 0;
+
    // Set up analysis state and auxiliary encoding storage
-   if (!context.analysis_state_ok) {
+   if (!context.dsp_ok || !context.block_ok) {
       throw ExportException(_("Unable to export - problem initialising"));
    }
 
    // Retrieve tags
    FillComment(&project, &context.comment, metadata);
+   context.comment_ok = true;
 
    // Set up packet->stream encoder.  According to encoder example,
    // a random serial number makes it more likely that you can make
@@ -288,6 +308,9 @@ ExportResult OGGExportProcessor::Process(ExportProcessorDelegate& delegate)
       int eos = 0;
       while (exportResult == ExportResult::Success && !eos) {
          float **vorbis_buffer = vorbis_analysis_buffer(&context.dsp, SAMPLES_PER_RUN);
+         if (!vorbis_buffer) {
+            throw ExportErrorException("OGG:290");
+         }
          auto samplesThisRun = context.mixer->Process();
 
          if (samplesThisRun == 0) {
@@ -295,14 +318,17 @@ ExportResult OGGExportProcessor::Process(ExportProcessorDelegate& delegate)
             err = vorbis_analysis_wrote(&context.dsp, 0);
          }
          else {
-
+            const auto samplesToCopy =
+               std::min<size_t>(samplesThisRun, SAMPLES_PER_RUN);
             for (size_t i = 0; i < context.numChannels; i++) {
-               float *temp = (float *)context.mixer->GetBuffer(i);
-               memcpy(vorbis_buffer[i], temp, sizeof(float)*SAMPLES_PER_RUN);
+               const float *temp =
+                  reinterpret_cast<const float *>(context.mixer->GetBuffer(i));
+               memcpy(vorbis_buffer[i], temp, sizeof(float) * samplesToCopy);
             }
 
             // tell the encoder how many samples we have
-            err = vorbis_analysis_wrote(&context.dsp, samplesThisRun);
+            err = vorbis_analysis_wrote(
+               &context.dsp, static_cast<int>(samplesToCopy));
          }
 
          // I don't understand what this call does, so here is the comment

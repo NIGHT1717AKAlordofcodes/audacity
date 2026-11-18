@@ -254,7 +254,7 @@ void ExportFilePanel::Init(const wxFileName& filename,
    if(mixerSpec != nullptr)
    {
       assert(!mMonoStereoMode);
-      *mMixerSpec = *mixerSpec;
+      mMixerSpec = std::make_unique<MixerOptions::Downmix>(*mixerSpec);
       mCustomMapping->SetValue(true);
    }
    else
@@ -313,7 +313,7 @@ void ExportFilePanel::SetCustomMappingEnabled(bool enabled)
          mMono->SetValue(true);
    }
    mCustomMapping->Enable(enabled);
-   mCustomizeChannels->Enable(enabled);
+   mCustomizeChannels->Enable(enabled && mCustomMapping->GetValue());
 }
 
 wxString ExportFilePanel::GetPath() const
@@ -480,12 +480,26 @@ void ExportFilePanel::OnChannelsConfigure(wxCommandEvent &event)
    //Configure for all tracks, but some channels may turn out to be silent
    //if exported region does not contain audio samples
    auto waveTracks = TrackList::Get(mProject).Any<const WaveTrack>();
-   
+   const auto numTrackChannels =
+      waveTracks.sum([](const auto track) { return track->NChannels(); });
+
+   if (!mMixerSpec || mMixerSpec->GetNumTracks() != numTrackChannels)
+   {
+      const auto maxChannels = mSelectedPlugin
+         ? std::clamp(
+              mSelectedPlugin->GetFormatInfo(mSelectedFormatIndex).maxChannels,
+              1u,
+              MaxExportChannels)
+         : MaxExportChannels;
+      mMixerSpec = std::make_unique<MixerOptions::Downmix>(
+         numTrackChannels, maxChannels);
+   }
+
    auto mixerSpec = std::make_unique<MixerOptions::Downmix>(*mMixerSpec);
    
    ExportMixerDialog md(waveTracks,
                         mixerSpec.get(),
-                        nullptr,
+                        this,
                         1,
                         XO("Advanced Mixing Options"));
    if(md.ShowModal() == wxID_OK)

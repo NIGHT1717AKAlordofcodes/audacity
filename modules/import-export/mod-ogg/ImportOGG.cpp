@@ -236,8 +236,9 @@ void OggImportFileHandle::Import(
       mStreams.push_back(tracks);
    }
 
-   /* The number of bytes to get from the codec in each run */
-#define CODEC_TRANSFER_SIZE 4096u
+   /* The number of bytes to get from the codec in each run
+    * (large enough to hold many frames even for 255-channel Ogg streams) */
+#define CODEC_TRANSFER_SIZE 65536u
 
    /* The number of samples to read between calls to the callback.
     * Balance between responsiveness of the GUI and throughput of import. */
@@ -245,7 +246,7 @@ void OggImportFileHandle::Import(
 
    long bytesRead = 0;
    {
-      ArrayOf<short> mainBuffer{ CODEC_TRANSFER_SIZE };
+      ArrayOf<short> mainBuffer{ CODEC_TRANSFER_SIZE / sizeof(short) };
 
       /* determine endianness (clever trick courtesy of Nicholas Devillard,
        * (http://www.eso.org/~ndevilla/endian/) */
@@ -293,10 +294,20 @@ void OggImportFileHandle::Import(
                bytesRead);
             break;
          }
+         else if (bytesRead == 0) {
+            break;
+         }
 
-         samplesRead = bytesRead / mVorbisFile->vi[bitstream].channels / sizeof(short);
+         if (bitstream < 0 || bitstream >= mVorbisFile->links)
+            continue;
 
-         if (mStreamUsage[bitstream] != 0)
+         const int streamChannels = mVorbisFile->vi[bitstream].channels;
+         if (streamChannels <= 0)
+            continue;
+
+         samplesRead = bytesRead / streamChannels / sizeof(short);
+
+         if (samplesRead > 0 && mStreamUsage[bitstream] != 0)
          {
             /* give the data to the wavetracks */
             unsigned chn = 0;
@@ -306,7 +317,7 @@ void OggImportFileHandle::Import(
                   (char *)(mainBuffer.get() + chn),
                   int16Sample,
                   samplesRead,
-                  mVorbisFile->vi[bitstream].channels,
+                  streamChannels,
                   int16Sample
                );
                ++chn;
@@ -337,7 +348,8 @@ void OggImportFileHandle::Import(
 
    for (auto& stream : mStreams)
    {
-      ImportUtils::FinalizeImport(outTracks, std::move(*stream));
+      if (stream)
+         ImportUtils::FinalizeImport(outTracks, std::move(*stream));
    }
    mStreams.clear();
 

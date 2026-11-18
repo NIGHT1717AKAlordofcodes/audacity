@@ -8,6 +8,8 @@
 
 **********************************************************************/
 
+#pragma once
+
 #include <memory>
 
 #include <wx/arrstr.h>
@@ -16,8 +18,12 @@
 
 #include "Track.h"
 
+class wxSlider;
+class wxSpinCtrl;
+class wxSpinEvent;
 class wxStaticText;
 
+class ExportMixerPanel;
 class WaveTrack;
 
 class TranslatableString;
@@ -38,15 +44,22 @@ public:
    virtual ~ExportMixerDialog();
 
 private:
-   wxStaticText *mChannelsText;
-   MixerOptions::Downmix *mMixerSpec;
+   ExportMixerPanel *mMixerPanel{};
+   wxStaticText *mChannelsText{};
+   wxSlider *mChannelsSlider{};
+   wxSpinCtrl *mChannelsSpin{};
+   MixerOptions::Downmix *mMixerSpec{};
    wxArrayString mTrackNames;
 
 private:
+   void SetNumChannels( int numChannels, bool updateSpin = true );
+
    void OnOk( wxCommandEvent &event );
    void OnCancel( wxCommandEvent &event );
    void OnMixerPanelHelp( wxCommandEvent &event );
    void OnSlider( wxCommandEvent &event );
+   void OnSpin( wxSpinEvent &event );
+   void OnSpinText( wxCommandEvent &event );
    void OnSize( wxSizeEvent &event );
 
 private:

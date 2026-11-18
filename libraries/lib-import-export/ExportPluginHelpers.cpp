@@ -32,9 +32,11 @@ std::unique_ptr<Mixer> ExportPluginHelpers::CreateMixer(
       inputs.emplace_back(
          StretchingSequence::Create(*pTrack, pTrack->GetClipInterfaces()),
          GetEffectStages(*pTrack));
-   auto masterEffectStages = GetMasterEffectStages(project);
-   //custom channel mapping isn't support with master effects on
-   assert(masterEffectStages.empty() || (numOutChannels <= 2 && mixerSpec == nullptr));
+   // Master effect stages only support up to 2 channels without custom mapping
+   auto masterEffectStages =
+      (numOutChannels <= 2 && mixerSpec == nullptr)
+         ? GetMasterEffectStages(project)
+         : Mixer::Stages{};
    // MB: the stop time should not be warped, this was a bug.
    return std::make_unique<Mixer>(
       std::move(inputs), std::move(masterEffectStages),

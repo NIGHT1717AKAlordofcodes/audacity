@@ -13,6 +13,7 @@
 **********************************************************************/
 #include "MixerOptions.h"
 
+#include <algorithm>
 #include "Envelope.h"
 
 MixerOptions::Warp::Warp(const AudacityProject *pProject)
@@ -65,7 +66,9 @@ MixerOptions::Downmix::Downmix(unsigned numTracks, unsigned maxNumChannels)
    mMaxNumChannels = maxNumChannels;
 
    if( mNumChannels > mMaxNumChannels )
-         mNumChannels = mMaxNumChannels;
+      mNumChannels = mMaxNumChannels;
+   else if( mNumChannels == 0 && mMaxNumChannels > 0 )
+      mNumChannels = 1;
 
    Alloc();
 
@@ -91,10 +94,13 @@ MixerOptions::Downmix::Downmix(const Downmix &mixerSpec, const std::vector<bool>
    : mMaxNumChannels(mixerSpec.mMaxNumChannels)
    , mNumChannels(mixerSpec.mNumChannels)
 {
-   mNumTracks = static_cast<unsigned>(std::count(tracksMask.begin(), tracksMask.end(), true));
+   const auto maskCount =
+      std::min<size_t>(tracksMask.size(), mixerSpec.mNumTracks);
+   mNumTracks = static_cast<unsigned>(
+      std::count(tracksMask.begin(), tracksMask.begin() + maskCount, true));
    Alloc();
    unsigned int dstTrackIndex = 0;
-   for( unsigned int srcTrackIndex = 0; srcTrackIndex < tracksMask.size(); srcTrackIndex++ )
+   for( size_t srcTrackIndex = 0; srcTrackIndex < maskCount; srcTrackIndex++ )
    {
       if(!tracksMask[srcTrackIndex])
          continue;
@@ -120,7 +126,7 @@ bool MixerOptions::Downmix::SetNumChannels(unsigned newNumChannels)
    if( mNumChannels == newNumChannels )
       return true;
 
-   if( newNumChannels > mMaxNumChannels )
+   if( newNumChannels == 0 || newNumChannels > mMaxNumChannels )
       return false;
 
    for( unsigned int i = 0; i < mNumTracks; i++ )

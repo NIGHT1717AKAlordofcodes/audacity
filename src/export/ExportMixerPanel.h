@@ -11,10 +11,12 @@
 #pragma once
 
 #include <memory>
+#include <vector>
 
-#include "wxPanelWrapper.h"
-
-#include "MemoryX.h"
+#include <wx/arrstr.h>
+#include <wx/bitmap.h>
+#include <wx/gdicmn.h>
+#include <wx/scrolwin.h>
 
 class wxMemoryDC;
 
@@ -22,17 +24,20 @@ namespace MixerOptions { class Downmix; }
 
 ///\class ExportMixerPanel
 ///\brief Panel that displays mixing for advanced mixing option.
-class ExportMixerPanel final : public wxPanelWrapper
+class ExportMixerPanel final : public wxScrolledWindow
 {
 public:
    ExportMixerPanel( wxWindow *parent, wxWindowID id,
          MixerOptions::Downmix *mixerSpec, wxArrayString trackNames,
          const wxPoint& pos = wxDefaultPosition,
          const wxSize& size = wxDefaultSize);
-   virtual ~ExportMixerPanel();
+   ~ExportMixerPanel() override;
+
+   void UpdateScrollbars();
 
    void OnMouseEvent(wxMouseEvent & event);
    void OnPaint(wxPaintEvent & event);
+   void OnSize(wxSizeEvent & event);
 
 private:
    std::unique_ptr<wxBitmap> mBitmap;
@@ -40,13 +45,13 @@ private:
    int mWidth;
    int mHeight;
    MixerOptions::Downmix *mMixerSpec;
-   ArrayOf<wxRect> mChannelRects;
-   ArrayOf<wxRect> mTrackRects;
+   std::vector<wxRect> mChannelRects;
+   std::vector<wxRect> mTrackRects;
    int mSelectedTrack, mSelectedChannel;
    wxArrayString mTrackNames;
    int mBoxWidth, mChannelHeight, mTrackHeight;
 
-   void SetFont( wxMemoryDC &memDC, const wxString &text, int width, int height );
+   bool SetFont( wxMemoryDC &memDC, const wxString &text, int width, int height );
    double Distance( wxPoint &a, wxPoint &b );
    bool IsOnLine( wxPoint p, wxPoint la, wxPoint lb );
 
