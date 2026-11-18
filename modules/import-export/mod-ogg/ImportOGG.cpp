@@ -308,12 +308,11 @@ void OggImportFileHandle::Import(
          samplesRead = bytesRead / streamChannels / sizeof(short);
 
          if (samplesRead > 0 &&
-             static_cast<size_t>(bitstream) < mStreamUsage.size() &&
-             static_cast<size_t>(bitstream) < mStreams.size() &&
-             mStreamUsage[bitstream] != 0)
+             mStreamUsage[bitstream] != 0 &&
+             static_cast<size_t>(bitstream) < mStreams.size())
          {
             /* give the data to the wavetracks */
-            if (auto& streamPtr = *std::next(mStreams.begin(), bitstream))
+            if (auto& streamPtr = mStreams[bitstream])
             {
                unsigned chn = 0;
                ImportUtils::ForEachChannel(*streamPtr, [&](auto& channel)
